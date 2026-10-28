@@ -1,0 +1,679 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>APK Risk Check</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;700&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one calm column. Input on top, verdict directly beneath with a scale that mirrors the four risk bands. */
+:root {
+  --bg: #EEF2F5;
+  --surface: #FFFFFF;
+  --fg: #13202B;
+  --muted: #586979;
+  --line: #D3DBE2;
+  --accent: #0A6B73;
+  --accent-fg: #FFFFFF;
+  --low: #1B8A57;
+  --med: #A86A0C;
+  --high: #C8470F;
+  --crit: #B3202F;
+  --font-display: "Familjen Grotesk", "Segoe UI", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0C141B; --surface: #131D26; --fg: #E5ECF2; --muted: #92A3B2; --line: #243240;
+    --accent: #5CC8C0; --accent-fg: #06201F;
+    --low: #46C58A; --med: #E0A43A; --high: #F0824A; --crit: #F26B79;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0C141B; --surface: #131D26; --fg: #E5ECF2; --muted: #92A3B2; --line: #243240;
+  --accent: #5CC8C0; --accent-fg: #06201F;
+  --low: #46C58A; --med: #E0A43A; --high: #F0824A; --crit: #F26B79;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.55;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 40px 56px;
+}
+.wrap { max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+header { display: flex; flex-direction: column; gap: 8px; }
+.eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); margin: 0; }
+h1 { font-family: var(--font-display); font-weight: 700; font-size: clamp(32px, 7vw, 44px); line-height: 1.05; margin: 0; text-wrap: balance; }
+.lede { margin: 0; color: var(--muted); max-width: 56ch; }
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+label.field { font-weight: 500; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; }
+input[type="text"] {
+  flex: 1 1 260px; min-width: 0; font: 400 15px var(--font-mono); color: var(--fg);
+  background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px;
+}
+button { font: inherit; cursor: pointer; }
+.go { background: var(--accent); color: var(--accent-fg); border: 0; border-radius: 8px; padding: 12px 20px; font-weight: 500; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.examples { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 13px; color: var(--muted); }
+.ex { background: transparent; color: var(--fg); border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; font-size: 13px; }
+.ex:hover { border-color: var(--accent); }
+
+details { border-top: 1px solid var(--line); padding-top: 12px; }
+summary { cursor: pointer; font-weight: 500; }
+.hint { color: var(--muted); font-size: 13px; margin: 6px 0 12px; }
+.checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px 16px; }
+.checks label { display: flex; gap: 8px; align-items: center; font-size: 14px; min-width: 0; }
+.checks input { accent-color: var(--accent); width: 16px; height: 16px; flex: none; }
+
+.result { gap: 18px; }
+.score { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+.pct { font-family: var(--font-mono); font-weight: 500; font-size: clamp(52px, 14vw, 72px); line-height: 1; font-variant-numeric: tabular-nums; }
+.verdict { display: flex; flex-direction: column; gap: 6px; min-width: 0; flex: 1 1 220px; }
+.chip { align-self: flex-start; font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.08em; padding: 3px 10px; border-radius: 4px; font-weight: 500; color: var(--tone); background: color-mix(in srgb, var(--tone) 14%, var(--surface)); }
+.action { margin: 0; }
+.result[data-band="LOW"] { --tone: var(--low); }
+.result[data-band="MEDIUM"] { --tone: var(--med); }
+.result[data-band="HIGH"] { --tone: var(--high); }
+.result[data-band="CRITICAL"] { --tone: var(--crit); }
+.pct { color: var(--tone, var(--fg)); }
+.target { margin: 0; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.target code { font-family: var(--font-mono); color: var(--fg); }
+
+.scale-wrap { display: flex; flex-direction: column; gap: 6px; }
+.scale { position: relative; height: 10px; border-radius: 5px; background: linear-gradient(to right, var(--low) 0 25%, var(--med) 25% 50%, var(--high) 50% 75%, var(--crit) 75% 100%); }
+.marker { position: absolute; top: -5px; width: 4px; height: 20px; border-radius: 2px; background: var(--fg); transform: translateX(-50%); transition: left 0.5s ease; box-shadow: 0 0 0 2px var(--surface); }
+.bands { display: grid; grid-template-columns: repeat(4, 1fr); font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.05em; color: var(--muted); }
+
+h2 { font-family: var(--font-display); font-size: 18px; margin: 0; }
+.reasons { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.reasons li { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: baseline; padding: 10px 0; border-top: 1px solid var(--line); }
+.reasons li:first-child { border-top: 0; }
+.tag { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; }
+.why { min-width: 0; }
+.why strong { font-weight: 500; display: block; }
+.why span { color: var(--muted); font-size: 13px; }
+.pts { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--tone, var(--fg)); }
+.exp li { grid-template-columns: auto 1fr; }
+.exp li[data-sev="3"] { --tone: var(--crit); }
+.exp li[data-sev="2"] { --tone: var(--high); }
+.exp li[data-sev="1"] { --tone: var(--med); }
+.exp .why span { display: block; }
+.exp .why .act { color: var(--fg); margin-top: 4px; }
+.steps { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; }
+.foot { margin: 0; font-size: 13px; color: var(--muted); }
+.error { color: var(--crit); margin: 0; }
+.note { font-size: 13px; color: var(--muted); margin: 0; max-width: 64ch; }
+
+.f { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.f label { font-size: 13px; color: var(--muted); }
+.f input[type="text"] { flex: none; width: 100%; padding: 9px 12px; }
+.fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px 16px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+.tile { border: 1px solid var(--line); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.tile .k { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.tile .v { font-family: var(--font-mono); font-size: 26px; font-weight: 500; overflow-wrap: anywhere; }
+.tile.main .v { color: var(--tone, var(--fg)); }
+.tile .s { font-size: 13px; color: var(--muted); }
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; min-width: 540px; font-size: 14px; }
+th, td { text-align: right; padding: 8px 10px; border-top: 1px solid var(--line); font-variant-numeric: tabular-nums; vertical-align: middle; }
+th:first-child, td:first-child { text-align: left; }
+thead th { border-top: 0; font-weight: 500; font-size: 13px; color: var(--muted); }
+td.num { font-family: var(--font-mono); }
+td.sub, th.sub { font-size: 12px; color: var(--muted); text-align: left; }
+.best { background: color-mix(in srgb, var(--accent) 11%, var(--surface)); }
+.pos { color: var(--low); }
+.neg { color: var(--crit); }
+.star { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.06em; color: var(--accent); display: block; }
+input[type="text"].mini { flex: none; width: 92px; padding: 6px 8px; font-size: 13px; text-align: right; }
+.verdict-line { margin: 0; }
+h3 { font-family: var(--font-display); font-size: 15px; margin: 0; }
+.formula { font-family: var(--font-mono); font-size: 12.5px; color: var(--muted); margin: 0; overflow-wrap: anywhere; }
+@media (prefers-reduced-motion: reduce) { .marker { transition: none; } }
+</style>
+
+<main class="wrap">
+  <header>
+    <p class="eyebrow">Android app links</p>
+    <h1>APK Risk Check</h1>
+    <p class="lede">Paste a link to an app or an APK download. You get a risk percentage, the reasons behind it, and the money risks it could expose you to.</p>
+  </header>
+
+  <form id="form" class="panel" autocomplete="off">
+    <label class="field" for="link">App or download link</label>
+    <div class="row">
+      <input id="link" type="text" inputmode="url" spellcheck="false" placeholder="https://example.com/app.apk">
+      <button class="go" type="submit">Check risk</button>
+    </div>
+    <div class="examples">
+      <span>Example links:</span>
+      <button class="ex" type="button" data-url="https://play.google.com/store/apps/details?id=com.whatsapp">Play Store listing</button>
+      <button class="ex" type="button" data-url="http://sbi-kyc-update.top/instant-loan.apk">Bank look-alike</button>
+      <button class="ex" type="button" data-url="http://185.220.101.4:8080/free-recharge-mod.apk">Raw IP download</button>
+    </div>
+    <details id="more">
+      <summary>Add what the app asks for (optional)</summary>
+      <p class="hint">If you can see the app's permissions, tick them for a fuller score. The same weighted rules score the permission combinations as in the project's analysis engine.</p>
+      <div class="checks" id="checks"></div>
+    </details>
+  </form>
+
+  <section id="result" class="panel result" aria-live="polite"></section>
+
+  <section id="loss-panel" class="panel">
+    <h2>What it could cost you</h2>
+    <p class="hint">Expected loss is the risk percentage multiplied by the money you could lose if the app is fraudulent. Enter the money reachable from the phone: bank balance, UPI limit or card limit.</p>
+    <div class="fields">
+      <div class="f"><label for="amount">Amount at stake (₹)</label><input id="amount" type="text" inputmode="numeric" value="50000"></div>
+    </div>
+    <div id="loss-out"></div>
+  </section>
+
+  <section id="econ" class="panel">
+    <h2>Cost-benefit of screening apps</h2>
+    <p class="hint">For an app store, bank or college lab choosing how to screen APKs. It compares three setups on avoided loss, running cost, false-alarm cost, present worth and return on investment. All figures are example assumptions that you can change.</p>
+    <div class="fields" id="econ-fields"></div>
+    <h3>The three setups</h3>
+    <div class="tablewrap"><table id="arch-table"></table></div>
+    <p class="hint" style="margin:0">Detection and false-alarm rates for static screening come from this project's test run (88.7% and 1.3%). The other two rows are example assumptions.</p>
+    <div id="econ-out" class="econ-out"></div>
+  </section>
+
+  <p class="note">The link score looks at the address itself: where it points, how it is written, and whether it imitates a known brand. A link cannot show what is inside an APK, so a low score does not prove an app is safe. The money risks list the usual outcomes of the patterns found, not a guarantee of loss. The expected-loss and cost-benefit figures are planning aids built on assumptions you can edit. Treat HIGH and CRITICAL as a reason not to install. Everything runs in your browser and nothing is downloaded or sent anywhere.</p>
+</main>
+
+<script>
+(function () {
+  "use strict";
+
+  var OFFICIAL = ["play.google.com", "galaxystore.samsung.com", "apps.apple.com", "appgallery.huawei.com", "apps.microsoft.com"];
+  var SHORTENERS = ["bit.ly", "tinyurl.com", "t.co", "cutt.ly", "is.gd", "rb.gy", "shorturl.at", "ow.ly", "goo.gl", "tiny.cc", "rebrand.ly", "t.ly"];
+  var FREE_HOSTS = ["mediafire.com", "mega.nz", "4shared.com", "sendspace.com", "000webhostapp.com", "weebly.com", "wixsite.com", "blogspot.com", "pages.dev", "netlify.app", "workers.dev", "t.me", "cdn.discordapp.com", "filetransfer.io", "ufile.io", "anonfiles.com"];
+  var RISKY_TLDS = ["xyz", "top", "click", "icu", "site", "online", "live", "vip", "loan", "win", "bid", "tk", "ml", "ga", "cf", "gq", "work", "rest", "cyou", "sbs", "cfd", "buzz", "zip", "mov", "monster", "fun"];
+  var LURE_WORDS = ["mod", "modded", "crack", "cracked", "hack", "hacked", "kyc", "loan", "loans", "lottery", "cashback", "betting", "rummy", "teenpatti", "unlocked", "recharge", "reward", "rewards", "earn"];
+  var BRANDS = [
+    { name: "SBI", tokens: ["sbi", "onlinesbi", "yono"], legit: ["sbi.co.in", "onlinesbi.sbi", "sbi.bank.in", "sbiyono.sbi"] },
+    { name: "HDFC Bank", tokens: ["hdfc", "hdfcbank"], legit: ["hdfcbank.com", "hdfc.com"] },
+    { name: "ICICI Bank", tokens: ["icici", "icicibank"], legit: ["icicibank.com"] },
+    { name: "Axis Bank", tokens: ["axisbank"], legit: ["axisbank.com"] },
+    { name: "Paytm", tokens: ["paytm"], legit: ["paytm.com", "paytm.in"] },
+    { name: "PhonePe", tokens: ["phonepe"], legit: ["phonepe.com"] },
+    { name: "Google Pay", tokens: ["gpay", "googlepay"], legit: ["google.com", "pay.google.com"] },
+    { name: "WhatsApp", tokens: ["whatsapp"], legit: ["whatsapp.com", "whatsapp.net"] },
+    { name: "Amazon", tokens: ["amazon"], legit: ["amazon.in", "amazon.com", "amazon.co.uk"] },
+    { name: "Flipkart", tokens: ["flipkart"], legit: ["flipkart.com"] },
+    { name: "Aadhaar / UIDAI", tokens: ["aadhaar", "aadhar", "uidai"], legit: ["uidai.gov.in"] },
+    { name: "IRCTC", tokens: ["irctc"], legit: ["irctc.co.in"] },
+    { name: "Jio", tokens: ["jio"], legit: ["jio.com"] },
+    { name: "Airtel", tokens: ["airtel"], legit: ["airtel.in"] },
+    { name: "Netflix", tokens: ["netflix"], legit: ["netflix.com"] },
+    { name: "Instagram", tokens: ["instagram"], legit: ["instagram.com"] },
+    { name: "Facebook", tokens: ["facebook"], legit: ["facebook.com"] },
+    { name: "Telegram", tokens: ["telegram"], legit: ["telegram.org", "t.me"] },
+    { name: "PayPal", tokens: ["paypal"], legit: ["paypal.com"] },
+    { name: "Binance", tokens: ["binance"], legit: ["binance.com"] }
+  ];
+
+  var PERMS = [
+    ["readSms", "Read SMS"], ["sendSms", "Send or receive SMS"], ["contacts", "Read contacts"],
+    ["callLog", "Read call log"], ["camera", "Camera"], ["mic", "Microphone"],
+    ["location", "Precise location"], ["boot", "Starts at boot"], ["overlay", "Draw over other apps"],
+    ["access", "Accessibility service"], ["admin", "Device administrator"], ["install", "Install other apps"],
+    ["hidden", "No launcher icon"], ["selfsigned", "Self-signed or brand-new certificate"], ["premium", "Premium-rate SMS codes"]
+  ];
+
+  var PERM_RULES = [
+    { label: "Reads and sends SMS", why: "The pattern used to steal one-time passwords.", pts: 15, test: function (p) { return p.readSms && p.sendSms; } },
+    { label: "Accessibility service", why: "Can read the screen and tap on your behalf.", pts: 8, test: function (p) { return p.access; } },
+    { label: "Draw-over-apps plus accessibility", why: "The classic banking trojan combination.", pts: 12, test: function (p) { return p.overlay && p.access; } },
+    { label: "Device administrator", why: "Makes the app hard to uninstall.", pts: 10, test: function (p) { return p.admin; } },
+    { label: "Can install other apps", why: "Typical of droppers that fetch more payloads.", pts: 7, test: function (p) { return p.install; } },
+    { label: "Contacts, call log and camera together", why: "Matches predatory loan apps that harvest personal data.", pts: 14, test: function (p) { return p.contacts && p.callLog && p.camera; } },
+    { label: "Microphone, location and start at boot", why: "Matches stalkerware that records in the background.", pts: 12, test: function (p) { return p.mic && p.location && p.boot; } },
+    { label: "No launcher icon", why: "The app hides itself from the app drawer.", pts: 10, test: function (p) { return p.hidden; } },
+    { label: "Self-signed or brand-new certificate", why: "Throwaway signing keys are common in malicious apps.", pts: 8, test: function (p) { return p.selfsigned; } },
+    { label: "Premium-rate SMS codes", why: "Can run up charges on your phone bill.", pts: 10, test: function (p) { return p.premium; } }
+  ];
+
+  function hostMatches(host, d) { return host === d || host.slice(-(d.length + 1)) === "." + d; }
+
+  function registrable(labels) {
+    var n = labels.length;
+    if (n <= 2) return labels.join(".");
+    var sld = labels[n - 2], tld = labels[n - 1];
+    if (tld.length === 2 && ["co", "com", "org", "gov", "net", "ac", "edu"].indexOf(sld) >= 0) return labels.slice(-3).join(".");
+    return labels.slice(-2).join(".");
+  }
+
+  function bandOf(pct) {
+    if (pct >= 75) return { name: "CRITICAL", action: "Do not install. Report the link and send the file to an analyst." };
+    if (pct >= 50) return { name: "HIGH", action: "Do not install. Get the app from an official store instead." };
+    if (pct >= 25) return { name: "MEDIUM", action: "Be careful. Check the publisher and the permissions first." };
+    return { name: "LOW", action: "No strong warning signs in what was checked." };
+  }
+
+  function parseLink(raw) {
+    var s = String(raw || "").trim();
+    if (!s) return null;
+    var typedScheme = /^[a-z][a-z0-9+.\-]*:\/\//i.test(s);
+    if (!typedScheme) s = "https://" + s;
+    var u;
+    try { u = new URL(s); } catch (e) { return null; }
+    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+    if (u.hostname.indexOf(".") < 0 && u.hostname.charAt(0) !== "[") return null;
+    return { u: u, typedScheme: typedScheme };
+  }
+
+  function linkItems(parsed) {
+    var u = parsed.u, items = [];
+    function add(label, pts, why) { items.push({ src: "link", label: label, pts: pts, why: why }); }
+
+    var host = u.hostname.toLowerCase();
+    var labels = host.split(".");
+    var reg = registrable(labels);
+    var tld = labels[labels.length - 1];
+    var path = u.pathname;
+    try { path = decodeURIComponent(u.pathname + u.search); } catch (e) { path = u.pathname + u.search; }
+    var tags = {};
+    var official = OFFICIAL.some(function (d) { return host === d; }) && (host !== "play.google.com" || u.pathname.indexOf("/store/apps") === 0);
+
+    if (official) {
+      items.push({ src: "link", label: "Official app store listing", pts: 0, why: "Store apps are scanned before they are published. Still check the publisher name." });
+      return { items: items, host: host, official: true, tags: tags };
+    }
+
+    add("Not an official app store", 5, "The link does not point to Google Play, the Galaxy Store or another official store.");
+
+    if (/\.(apk|xapk|apks|apkm)$/i.test(u.pathname)) { tags.sideload = true; add("Link goes straight to an APK file", 20, "Installing outside a store skips the safety checks stores run."); }
+    var tokens = (host + " " + path).toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+    if (!/\.(apk|xapk|apks|apkm)$/i.test(u.pathname) && tokens.indexOf("apk") >= 0) add("Mentions an APK download", 8, "The address talks about downloading an APK.");
+
+    if (parsed.typedScheme && u.protocol === "http:") add("No HTTPS", 12, "The connection is not encrypted, so the file can be swapped on the way.");
+
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.charAt(0) === "[") add("Address is a raw IP number", 25, "Real services use a named website. Throwaway servers often use bare IPs.");
+
+    if (SHORTENERS.indexOf(reg) >= 0) add("Link shortener", 15, "The real destination is hidden behind a short address.");
+
+    if (FREE_HOSTS.some(function (d) { return hostMatches(host, d); })) add("Free hosting or file sharing site", 14, "Anyone can upload files here, so the address says little about who made the app.");
+
+    if (labels.some(function (l) { return l.indexOf("xn--") === 0; })) add("Look-alike characters in the address", 18, "International characters can imitate a familiar name.");
+
+    if (RISKY_TLDS.indexOf(tld) >= 0) add("Cheap, abuse-prone ending (." + tld + ")", 12, "This ending is common in disposable scam sites.");
+
+    BRANDS.some(function (b) {
+      var named = b.tokens.some(function (t) { return host.split(/[.\-_]/).indexOf(t) >= 0; });
+      var legit = b.legit.some(function (d) { return hostMatches(host, d); });
+      if (named && !legit) { tags.brand = b.name; add("Uses the name " + b.name + " on an unrelated site", 25, "The address borrows a trusted name but is not that company's domain."); return true; }
+      return false;
+    });
+
+    var lures = LURE_WORDS.filter(function (w) { return tokens.indexOf(w) >= 0; });
+    tags.lures = lures;
+    tags.words = tokens;
+    if (lures.length) add("Scam-style wording: " + lures.slice(0, 3).join(", "), Math.min(20, 10 + 5 * (lures.length - 1)), "Words like these are common in fake loan, reward and modded app pages.");
+
+    if (u.username || u.password) add("Hidden login part in the address", 15, "Text before the @ is used to disguise the real host.");
+    if (u.port) add("Unusual port " + u.port, 8, "Normal sites use the default web port.");
+    if ((host.match(/-/g) || []).length >= 3) add("Many hyphens in the name", 8, "Long hyphenated names are typical of throwaway domains.");
+    if (labels.length - reg.split(".").length >= 3) add("Many nested subdomains", 6, "Deep subdomains can bury the real domain name.");
+    var core = reg.split(".")[0];
+    if (core.length >= 8 && (core.replace(/[^0-9]/g, "").length / core.length) >= 0.3) add("Name looks auto-generated", 8, "A large share of the name is digits.");
+    if (u.href.length > 120) add("Very long address", 5, "Long addresses can hide the parts that matter.");
+
+    return { items: items, host: host, official: false, tags: tags };
+  }
+
+  function permItems(perms) {
+    var items = [];
+    PERM_RULES.forEach(function (r) {
+      if (r.test(perms)) items.push({ src: "app", label: r.label, pts: r.pts, why: r.why });
+    });
+    return items;
+  }
+
+  var LOAN_WORDS = ["kyc", "loan", "loans"];
+  var REWARD_WORDS = ["lottery", "cashback", "betting", "rummy", "teenpatti", "reward", "rewards", "earn", "recharge"];
+  var MOD_WORDS = ["mod", "modded", "crack", "cracked", "hack", "hacked", "unlocked"];
+  function hasAny(list, words) { return list.some(function (w) { return words.indexOf(w) >= 0; }); }
+
+  var INVEST_WORDS = ["invest", "investment", "investing", "trading", "crypto", "bitcoin", "forex", "ipo", "stocks", "staking"];
+  var UPI_WORDS = ["upi", "refund", "qr", "collect", "emi"];
+  var CARD_WORDS = ["card", "credit", "debit", "insurance", "pan", "limit"];
+
+  function exposures(t, p, pct) {
+    t = t || {};
+    var lures = t.lures || [], words = t.words || [], out = [];
+    var gate = pct >= 25;
+    function add(sev, title, how, act) { out.push({ sev: sev, title: title, how: how, act: act }); }
+
+    if (t.brand) add(3, "Fake " + t.brand + " login or KYC page", "The link borrows the name of a trusted company. Any login, card, PIN or KYC detail you enter goes to the scammer.", "Open the company's own app, or type its official address yourself.");
+    if (p.readSms && p.sendSms) add(3, "Stolen one-time passwords", "An app that can read and send SMS can capture bank OTPs and approve payments before you see them.", "Do not give SMS access to any app that is not your bank, UPI or messaging app.");
+    if (p.overlay && p.access) add(3, "Fake bank screens and remote taps", "It can draw a copy of your banking or UPI login over the real app and tap buttons for you, which exposes passwords, PINs and approvals.", "Do not turn on accessibility or draw-over-apps for an unfamiliar app.");
+    if (hasAny(lures, LOAN_WORDS) || (p.contacts && p.callLog && p.camera)) add(3, "Predatory loan trap", "These apps lend small sums at very high fees, copy your contacts and photos, then threaten you and your contacts to force repayment.", "Borrow only from banks and lenders registered with the RBI.");
+    if (hasAny(lures, REWARD_WORDS)) add(2, "Advance-fee and deposit scams", "Pages that promise rewards, cashback, free recharge or easy earnings ask for a deposit or your card and UPI details first. The money is not returned.", "Never pay to receive a reward, and never share your UPI PIN or card details.");
+    if (p.premium) add(2, "Surprise charges on your phone bill", "Premium-rate SMS codes can bill your number for each message sent.", "Ask your carrier to block premium SMS.");
+    if (p.admin) add(2, "Hard to remove, so losses can continue", "Device administrator rights stop normal uninstalling, so the app can keep acting while you try to remove it.", "Turn off its device admin access in Settings, then uninstall.");
+    if (p.install) add(2, "More malware installed behind your back", "Apps that can install other apps often fetch banking trojans after you open them.", "Do not allow installs from unknown sources for this app.");
+    if (hasAny(lures, MOD_WORDS)) add(2, "Tampered copy of a money app", "Cracked or modded versions of popular apps are a common way to hide banking trojans and payment skimmers.", "Install the original from an official store.");
+    else if (t.sideload) add(1, "Unvetted install source", "A sideloaded file skips store scans, so a tampered copy of a payment app could capture card or UPI details.", "Get the app from Google Play or the company's official site.");
+    if (p.mic && p.location && p.boot) add(1, "Spying that leads to blackmail", "Recording audio and tracking location in the background can feed blackmail or targeted fraud.", "Deny microphone and location access to apps that do not need them.");
+
+    if (gate && hasAny(words, INVEST_WORDS)) add(2, "Fake investment or trading app", "Fake apps show made-up profits to win bigger deposits, then block withdrawals or ask for 'tax' and 'fees' before releasing your money.", "Invest only through SEBI-registered brokers and check the registration on the SEBI website.");
+    if (gate && hasAny(words, UPI_WORDS)) add(2, "UPI refund and collect-request fraud", "You are told to scan a QR code or approve a request to receive money. Approving a collect request or entering your UPI PIN sends money out, never in.", "Never enter your UPI PIN to receive money.");
+    if (gate && hasAny(words, CARD_WORDS)) add(2, "Card, PAN and credit-limit fraud", "Pages offering instant cards, higher limits or insurance collect card numbers, CVV and PAN details that are then used for purchases and loans in your name.", "Share card details only inside your bank's own app or site.");
+
+    out.sort(function (a, b) { return b.sev - a.sev; });
+    return out;
+  }
+
+  function analyze(raw, perms) {
+    var parsed = parseLink(raw);
+    if (!parsed) return { error: "That does not look like a link. Paste something like https://example.com/app.apk" };
+    var l = linkItems(parsed);
+    var p = permItems(perms || {});
+    var all = l.items.concat(p);
+    var total = all.reduce(function (a, i) { return a + i.pts; }, 0);
+    var pct = Math.round(100 * (1 - Math.exp(-total / 45)));
+    pct = Math.max(1, Math.min(99, pct));
+    var band = bandOf(pct);
+    all.sort(function (a, b) { return b.pts - a.pts; });
+    return { pct: pct, band: band.name, action: band.action, items: all, exposures: exposures(l.tags, perms || {}, pct), host: l.host, official: l.official, usedApp: p.length > 0 || Object.keys(perms || {}).some(function (k) { return perms[k]; }) };
+  }
+
+  function fmtINR(v) {
+    var neg = v < 0, a = Math.abs(v), s;
+    if (a >= 1e7) s = (a / 1e7).toFixed(2) + " Cr";
+    else if (a >= 1e5) s = (a / 1e5).toFixed(2) + " L";
+    else s = Math.round(a).toLocaleString("en-IN");
+    return (neg ? "−" : "") + "₹" + s;
+  }
+
+  /* g: apps, loss, fpCost, cs, cd, rate, years (all plain numbers); a: stat, recall, fpr, share, up (rates as 0..1); m: malicious share 0..1 */
+  function econ(g, a, m) {
+    var M = g.apps * m;
+    var caught = M * a.recall;
+    var falseAlarms = (g.apps - M) * a.fpr;
+    var avoided = caught * g.loss;
+    var running = g.apps * (a.stat ? g.cs : 0) + g.apps * a.share * g.cd;
+    var fpCost = falseAlarms * g.fpCost;
+    var annual = avoided - running - fpCost;
+    var i = g.rate, n = g.years;
+    var af = i > 0 ? (1 - Math.pow(1 + i, -n)) / i : n;
+    var costsPW = a.up + (running + fpCost) * af;
+    var benefitsPW = avoided * af;
+    return {
+      caught: caught, missed: M - caught, avoided: avoided, running: running, fpCost: fpCost,
+      annual: annual, pw: benefitsPW - costsPW,
+      roi: costsPW > 0 ? (benefitsPW - costsPW) / costsPW : 0,
+      bcr: costsPW > 0 ? benefitsPW / costsPW : 0
+    };
+  }
+
+  if (typeof document === "undefined") { globalThis.__apk = { analyze: analyze, econ: econ, fmtINR: fmtINR }; return; }
+
+  var $ = function (id) { return document.getElementById(id); };
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+
+  var checks = $("checks");
+  PERMS.forEach(function (p) {
+    var lab = el("label");
+    var cb = el("input"); cb.type = "checkbox"; cb.id = "perm-" + p[0]; cb.dataset.key = p[0];
+    lab.appendChild(cb); lab.appendChild(el("span", null, p[1]));
+    checks.appendChild(lab);
+  });
+
+  function readPerms() {
+    var o = {};
+    checks.querySelectorAll("input").forEach(function (cb) { o[cb.dataset.key] = cb.checked; });
+    return o;
+  }
+
+  var lastRes = null;
+  function parseNum(s) { var n = Number(String(s).replace(/[^0-9.\-]/g, "")); return isFinite(n) ? n : 0; }
+
+  function tile(parent, k, v, s, main) {
+    var t = el("div", main ? "tile main" : "tile");
+    t.appendChild(el("span", "k", k)); t.appendChild(el("span", "v", v)); t.appendChild(el("span", "s", s));
+    parent.appendChild(t);
+  }
+
+  function updateLoss() {
+    var out = $("loss-out");
+    out.textContent = "";
+    if (!lastRes) { out.appendChild(el("p", "foot", "Check a link above to see the expected loss.")); return; }
+    var amt = Math.max(0, parseNum($("amount").value));
+    var tone = { LOW: "low", MEDIUM: "med", HIGH: "high", CRITICAL: "crit" }[lastRes.band];
+    out.style.setProperty("--tone", "var(--" + tone + ")");
+    var t = el("div", "tiles");
+    tile(t, "Expected loss", fmtINR(amt * lastRes.pct / 100), "at " + lastRes.pct + "% risk", true);
+    tile(t, "Worst case", fmtINR(amt), "if the app is fraudulent");
+    tile(t, "From a store listing", fmtINR(amt * 0.01), "about 1% risk, the score a store app gets");
+    out.appendChild(t);
+  }
+
+  var GFIELDS = [
+    ["e-apps", "Apps screened per year", 200000],
+    ["e-m", "Share that is malicious (%)", 1],
+    ["e-loss", "Loss avoided per malicious app caught (₹)", 20000],
+    ["e-fp", "Cost of one false alarm (₹)", 500],
+    ["e-cs", "Static scan cost per app (₹)", 2],
+    ["e-cd", "Sandbox run cost per app (₹)", 60],
+    ["e-rate", "Discount rate (% per year)", 10],
+    ["e-years", "Years in use", 5]
+  ];
+  var ARCHS = [
+    { name: "Static screening only", stat: true, recall: 88.7, fpr: 1.3, share: 0, up: 500000 },
+    { name: "Layered: static, then sandbox", stat: true, recall: 95, fpr: 0.6, share: 15, up: 1200000 },
+    { name: "Sandbox every app", stat: false, recall: 97, fpr: 0.5, share: 100, up: 3000000 }
+  ];
+
+  function miniInput(id, val) {
+    var i = el("input", "mini"); i.type = "text"; i.id = id; i.value = String(val); i.setAttribute("inputmode", "decimal");
+    i.setAttribute("aria-label", id); return i;
+  }
+
+  function buildEcon() {
+    var fields = $("econ-fields");
+    GFIELDS.forEach(function (f) {
+      var w = el("div", "f"); var l = el("label", null, f[1]); l.setAttribute("for", f[0]);
+      var i = el("input"); i.type = "text"; i.id = f[0]; i.value = String(f[2]); i.setAttribute("inputmode", "decimal");
+      w.appendChild(l); w.appendChild(i); fields.appendChild(w);
+    });
+    var tb = $("arch-table");
+    var head = el("thead"); var hr = el("tr");
+    ["Setup", "Detects (%)", "False alarms (%)", "Sent to sandbox (%)", "Upfront cost (₹)"].forEach(function (h) { hr.appendChild(el("th", null, h)); });
+    head.appendChild(hr); tb.appendChild(head);
+    var body = el("tbody");
+    ARCHS.forEach(function (a, k) {
+      var tr = el("tr");
+      tr.appendChild(el("td", null, a.name));
+      [["recall", a.recall], ["fpr", a.fpr], ["share", a.share], ["up", a.up]].forEach(function (c) {
+        var td = el("td"); var inp = miniInput("a" + k + "-" + c[0], c[1]);
+        inp.setAttribute("aria-label", a.name + " " + c[0]); td.appendChild(inp); tr.appendChild(td);
+      });
+      body.appendChild(tr);
+    });
+    tb.appendChild(body);
+  }
+
+  function readG() {
+    var v = function (id) { return parseNum($(id).value); };
+    return { apps: Math.max(0, v("e-apps")), m: Math.min(100, Math.max(0, v("e-m"))) / 100, loss: Math.max(0, v("e-loss")), fpCost: Math.max(0, v("e-fp")),
+      cs: Math.max(0, v("e-cs")), cd: Math.max(0, v("e-cd")), rate: Math.max(0, v("e-rate")) / 100, years: Math.max(1, Math.round(v("e-years"))) };
+  }
+  function readA(k) {
+    var v = function (f) { return parseNum($("a" + k + "-" + f).value); };
+    return { stat: ARCHS[k].stat, recall: Math.min(100, Math.max(0, v("recall"))) / 100, fpr: Math.min(100, Math.max(0, v("fpr"))) / 100,
+      share: Math.min(100, Math.max(0, v("share"))) / 100, up: Math.max(0, v("up")) };
+  }
+
+  function updateEcon() {
+    var g = readG(), out = $("econ-out");
+    out.textContent = "";
+    out.style.display = "flex"; out.style.flexDirection = "column"; out.style.gap = "14px";
+    var R = ARCHS.map(function (a, k) { return econ(g, readA(k), g.m); });
+    var best = 0; R.forEach(function (r, k) { if (r.pw > R[best].pw) best = k; });
+
+    var wrap = el("div", "tablewrap"); var tb = el("table");
+    var thead = el("thead"), hr = el("tr"); hr.appendChild(el("th", null, "Per year, then over " + g.years + " years"));
+    ARCHS.forEach(function (a, k) {
+      var th = el("th", k === best ? "best" : null, a.name);
+      if (k === best) th.appendChild(el("span", "star", "BEST VALUE"));
+      hr.appendChild(th);
+    });
+    thead.appendChild(hr); tb.appendChild(thead);
+    var body = el("tbody");
+    function row(label, fn, signed) {
+      var tr = el("tr"); tr.appendChild(el("td", null, label));
+      R.forEach(function (r, k) {
+        var val = fn(r), td = el("td", "num" + (k === best ? " best" : ""), val.text);
+        if (signed) td.className += val.n >= 0 ? " pos" : " neg";
+        tr.appendChild(td);
+      });
+      body.appendChild(tr);
+    }
+    var money = function (key) { return function (r) { return { n: r[key], text: fmtINR(r[key]) }; }; };
+    row("Malicious apps caught", function (r) { return { n: r.caught, text: Math.round(r.caught).toLocaleString("en-IN") }; });
+    row("Malicious apps missed", function (r) { return { n: r.missed, text: Math.round(r.missed).toLocaleString("en-IN") }; });
+    row("Avoided losses", money("avoided"));
+    row("Running cost", money("running"));
+    row("False-alarm cost", money("fpCost"));
+    row("Net benefit per year", money("annual"), true);
+    row("Present worth (after upfront cost)", money("pw"), true);
+    row("Return on investment", function (r) { return { n: r.roi, text: (r.roi * 100).toFixed(0) + "%" }; }, true);
+    row("Benefit-cost ratio", function (r) { return { n: r.bcr - 1, text: r.bcr.toFixed(2) }; }, true);
+    tb.appendChild(body); wrap.appendChild(tb); out.appendChild(wrap);
+
+    var p = el("p", "verdict-line");
+    p.textContent = R[best].pw > 0
+      ? ARCHS[best].name + " gives the most value: " + fmtINR(R[best].pw) + " present worth over " + g.years + " years, a return of " + (R[best].roi * 100).toFixed(0) + "%."
+      : "None of the setups pays back with these assumptions. The best of them is " + ARCHS[best].name + " at " + fmtINR(R[best].pw) + " present worth.";
+    out.appendChild(p);
+    out.appendChild(el("p", "formula", "Net benefit = avoided losses − running cost − false-alarm cost. Present worth = −upfront cost + net benefit × annuity factor at the discount rate."));
+
+    out.appendChild(el("h3", null, "What if fewer or more apps are malicious?"));
+    var w2 = el("div", "tablewrap"), t2 = el("table"), h2 = el("thead"), r2 = el("tr");
+    r2.appendChild(el("th", null, "Present worth at"));
+    ARCHS.forEach(function (a) { r2.appendChild(el("th", null, a.name)); });
+    h2.appendChild(r2); t2.appendChild(h2);
+    var b2 = el("tbody");
+    [0.5, 1, 2].forEach(function (mult) {
+      var m = Math.min(1, g.m * mult);
+      var rs = ARCHS.map(function (a, k) { return econ(g, readA(k), m); });
+      var bi = 0; rs.forEach(function (r, k) { if (r.pw > rs[bi].pw) bi = k; });
+      var tr = el("tr"); tr.appendChild(el("td", null, (m * 100).toFixed(1).replace(/\.0$/, "") + "% malicious"));
+      rs.forEach(function (r, k) {
+        var td = el("td", "num" + (k === bi ? " best" : "") + (r.pw >= 0 ? " pos" : " neg"), fmtINR(r.pw));
+        tr.appendChild(td);
+      });
+      b2.appendChild(tr);
+    });
+    t2.appendChild(b2); w2.appendChild(t2); out.appendChild(w2);
+    out.appendChild(el("p", "foot", "The shaded cell in each row is the best choice at that malware level. When it moves from one column to another, the decision depends on that assumption."));
+  }
+
+  function render(res, isExample) {
+    var box = $("result");
+    box.textContent = "";
+    if (res.error) { box.removeAttribute("data-band"); box.appendChild(el("p", "error", res.error)); lastRes = null; updateLoss(); return; }
+    box.setAttribute("data-band", res.band);
+
+    var score = el("div", "score");
+    score.appendChild(el("div", "pct", res.pct + "%"));
+    var v = el("div", "verdict");
+    v.appendChild(el("span", "chip", res.band + " RISK"));
+    v.appendChild(el("p", "action", res.action));
+    var t = el("p", "target", "Checked address: ");
+    t.appendChild(el("code", null, res.host));
+    v.appendChild(t);
+    score.appendChild(v);
+    box.appendChild(score);
+
+    var sw = el("div", "scale-wrap");
+    var scale = el("div", "scale");
+    var m = el("div", "marker"); m.style.left = "0%"; scale.appendChild(m);
+    sw.appendChild(scale);
+    var bands = el("div", "bands");
+    ["LOW", "MEDIUM", "HIGH", "CRITICAL"].forEach(function (b) { bands.appendChild(el("span", null, b)); });
+    sw.appendChild(bands);
+    box.appendChild(sw);
+    requestAnimationFrame(function () { requestAnimationFrame(function () { m.style.left = res.pct + "%"; }); });
+
+    box.appendChild(el("h2", null, "Why this score"));
+    var ul = el("ul", "reasons");
+    res.items.forEach(function (i) {
+      var li = el("li");
+      li.appendChild(el("span", "tag", i.src === "link" ? "Link" : "App"));
+      var w = el("div", "why");
+      w.appendChild(el("strong", null, i.label));
+      w.appendChild(el("span", null, i.why));
+      li.appendChild(w);
+      li.appendChild(el("span", "pts", i.pts > 0 ? "+" + i.pts : "0"));
+      ul.appendChild(li);
+    });
+    box.appendChild(ul);
+
+    box.appendChild(el("h2", null, "Money at risk"));
+    if (res.exposures.length) {
+      var SEV = { 3: "SEVERE", 2: "HIGH", 1: "POSSIBLE" };
+      var exl = el("ul", "reasons exp");
+      res.exposures.forEach(function (x) {
+        var li = el("li"); li.setAttribute("data-sev", x.sev);
+        li.appendChild(el("span", "chip", SEV[x.sev]));
+        var w = el("div", "why");
+        w.appendChild(el("strong", null, x.title));
+        w.appendChild(el("span", null, x.how));
+        w.appendChild(el("span", "act", "What to do: " + x.act));
+        li.appendChild(w);
+        exl.appendChild(li);
+      });
+      box.appendChild(exl);
+    } else {
+      box.appendChild(el("p", "foot", "No specific financial exposure found in what was checked."));
+    }
+
+    if (res.pct >= 25) {
+      box.appendChild(el("h2", null, "If you already installed it"));
+      var ol = el("ol", "steps");
+      [
+        "Turn off mobile data and Wi-Fi, then uninstall the app. If it will not uninstall, turn off its device admin access in Settings first.",
+        "Call your bank to block cards, UPI and net banking, then change passwords from a clean device.",
+        "Report it. In India, call 1930 or file at cybercrime.gov.in.",
+        "If it copied your contacts, warn them not to respond to messages that seem to come from you."
+      ].forEach(function (s) { ol.appendChild(el("li", null, s)); });
+      box.appendChild(ol);
+    }
+
+    var foot = res.usedApp ? "Scored from the link and the permissions you ticked." : "Scored from the link only. Tick the app's permissions above for a fuller picture.";
+    if (isExample) foot = "Example result. Paste your own link above. " + foot;
+    box.appendChild(el("p", "foot", foot));
+    lastRes = res; updateLoss();
+  }
+
+  function run(isExample) { render(analyze($("link").value, readPerms()), isExample === true); }
+
+  $("form").addEventListener("submit", function (e) { e.preventDefault(); run(false); });
+  checks.addEventListener("change", function () { run(false); });
+  document.querySelectorAll(".ex").forEach(function (b) {
+    b.addEventListener("click", function () { $("link").value = b.dataset.url; run(false); });
+  });
+
+  buildEcon();
+  $("amount").addEventListener("input", updateLoss);
+  $("econ").addEventListener("input", updateEcon);
+
+  $("link").value = "http://sbi-kyc-update.top/instant-loan.apk";
+  run(true);
+  updateEcon();
+})();
+</script>
+
+</body></html>
